@@ -189,313 +189,353 @@
   <div class="toast" id="toast" role="status" aria-live="polite">已複製分享連結</div>
 
   <script>
-    // ====== 台灣時區天數 ======
-    const TZ = 'Asia/Taipei';
-    function toLocalMidnight(date){
-      const y = new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric'}).format(date);
-      const m = new Intl.DateTimeFormat('en-CA',{timeZone:TZ,month:'2-digit'}).format(date);
-      const d = new Intl.DateTimeFormat('en-CA',{timeZone:TZ,day:'2-digit'}).format(date);
-      return new Date(`${y}-${m}-${d}T00:00:00+08:00`);
-    }
-    function daysSince(startStr){
-      if(!startStr) return 0;
-      const start = toLocalMidnight(new Date(startStr));
-      const today = toLocalMidnight(new Date());
-      return Math.floor((today - start)/86400000) + 1;
-    }
-
-    // ====== DOM ======
-    const nameA = document.getElementById('nameA');
-    const nameB = document.getElementById('nameB');
-    const photoA = document.getElementById('photoA');
-    const photoB = document.getElementById('photoB');
-    const prevA = document.getElementById('prevA');
-    const prevB = document.getElementById('prevB');
-    const bubbleA = document.getElementById('bubbleA');
-    const bubbleB = document.getElementById('bubbleB');
-    const start = document.getElementById('start');
-    const goBtn = document.getElementById('goBtn');
-    const daysEl = document.getElementById('days');
-    const namesEl = document.getElementById('names');
-    const subEl = document.getElementById('sub');
-    const pair = document.getElementById('pair');
-    const shareBtn = document.getElementById('shareBtn');
-    const aiToggleBtn = document.getElementById('aiToggleBtn');
-    const resetBtn = document.getElementById('resetBtn');
-    const toast = document.getElementById('toast');
-    const heartFX = document.getElementById('heartFX');
-
-    // AI 控制
-    const useAIA = document.getElementById('useAIA');
-    const useAIB = document.getElementById('useAIB');
-    const genAIA = document.getElementById('genAIA');
-    const genAIB = document.getElementById('genAIB');
-    const revertA = document.getElementById('revertA');
-    const revertB = document.getElementById('revertB');
-    const styleA = document.getElementById('styleA');
-    const styleB = document.getElementById('styleB');
-    const strengthA = document.getElementById('strengthA');
-    const strengthB = document.getElementById('strengthB');
-    const strengthATip = document.getElementById('strengthATip');
-    const strengthBTip = document.getElementById('strengthBTip');
-
-    // ====== 狀態 ======
-    let START_DATE = start?.value || '';
-    let originalA = null, originalB = null;
-    let aiA = null, aiB = null;
-    let SHARE_ID = null;
-  async function getPublicConfig(){
-    // 建議：從你的後端 `/api/public-config` 取公開設定（避免把值硬寫在 HTML）
-    const r = await fetch('/api/public-config');
-    const { supabaseUrl, supabaseAnon } = await r.json();
-    return { supabaseUrl, supabaseAnon };
+  // ========== 台灣時區天數 ==========
+  const TZ = 'Asia/Taipei';
+  function toLocalMidnight(date){
+    const y = new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric'}).format(date);
+    const m = new Intl.DateTimeFormat('en-CA',{timeZone:TZ,month:'2-digit'}).format(date);
+    const d = new Intl.DateTimeFormat('en-CA',{timeZone:TZ,day:'2-digit'}).format(date);
+    return new Date(`${y}-${m}-${d}T00:00:00+08:00`);
+  }
+  function daysSince(startStr){
+    if(!startStr) return 0;
+    const start = toLocalMidnight(new Date(startStr));
+    const today = toLocalMidnight(new Date());
+    return Math.floor((today - start)/86400000) + 1;
   }
 
-async function ensureSupabase(){
-    let supabaseClient = null; // Declare supabaseClient inside the function
+  // ========== DOM ==========
+  const nameA = document.getElementById('nameA');
+  const nameB = document.getElementById('nameB');
+  const photoA = document.getElementById('photoA');
+  const photoB = document.getElementById('photoB');
+  const prevA = document.getElementById('prevA');
+  const prevB = document.getElementById('prevB');
+  const bubbleA = document.getElementById('bubbleA');
+  const bubbleB = document.getElementById('bubbleB');
+  const start = document.getElementById('start');
+  const goBtn = document.getElementById('goBtn');
+  const daysEl = document.getElementById('days');
+  const namesEl = document.getElementById('names');
+  const subEl = document.getElementById('sub');
+  const pair = document.getElementById('pair');
+  const shareBtn = document.getElementById('shareBtn');
+  const aiToggleBtn = document.getElementById('aiToggleBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const toast = document.getElementById('toast');
+  const heartFX = document.getElementById('heartFX');
+
+  // AI 控制
+  const useAIA = document.getElementById('useAIA');
+  const useAIB = document.getElementById('useAIB');
+  const genAIA = document.getElementById('genAIA');
+  const genAIB = document.getElementById('genAIB');
+  const revertA = document.getElementById('revertA');
+  const revertB = document.getElementById('revertB');
+  const styleA = document.getElementById('styleA');
+  const styleB = document.getElementById('styleB');
+  const strengthA = document.getElementById('strengthA');
+  const strengthB = document.getElementById('strengthB');
+  const strengthATip = document.getElementById('strengthATip');
+  const strengthBTip = document.getElementById('strengthBTip');
+
+  // ========== 狀態 ==========
+  let START_DATE = start?.value || '';
+  let originalA = null, originalB = null;
+  let aiA = null, aiB = null;
+  let SHARE_ID = null;
+
+  // ========== ShareId ==========
+  function generateId(len=12){
+    const chars='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const arr = new Uint32Array(len); crypto.getRandomValues(arr);
+    return Array.from(arr,x=>chars[x%chars.length]).join('');
+  }
+  function idFromPath(){ const m = location.pathname.match(/^\/c\/([A-Za-z0-9_-]{6,})/); return m?m[1]:null; }
+  function ensureShareId(){
+    if (SHARE_ID) return SHARE_ID;
+    const p = new URLSearchParams(location.search);
+    SHARE_ID = idFromPath() || p.get('id') || localStorage.getItem('share-id') || generateId();
+    try{ localStorage.setItem('share-id', SHARE_ID); }catch{}
+    return SHARE_ID;
+  }
+
+  // ========== Supabase（用 /api/public-config 拿公開設定）==========
+  let supabaseClient = null, supaConfig = null;
+  async function loadSupaConfig(){
+    if (supaConfig) return supaConfig;
+    const r = await fetch('/api/public-config');
+    const j = await r.json();
+    if(!j?.supabaseUrl || !j?.supabaseAnon) throw new Error('缺少 Supabase 設定');
+    supaConfig = j; return supaConfig;
+  }
+  async function ensureSupabase(){
     if (supabaseClient) return supabaseClient;
-    const { supabaseUrl, supabaseAnon } = await getPublicConfig();
+    const { supabaseUrl, supabaseAnon } = await loadSupaConfig();
     supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnon);
     return supabaseClient;
-}
-    // ====== 產生/取得 shareId（/c/:id）=====
-    function generateId(len=12){
-      const chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-      const arr = new Uint32Array(len); crypto.getRandomValues(arr);
-      return Array.from(arr, x => chars[x % chars.length]).join('');
-    }
-    function getIdFromPath(){ const m = location.pathname.match(/^\/c\/([A-Za-z0-9_-]{6,})/); return m?m[1]:null; }
-    function ensureShareId(){
-      if (SHARE_ID) return SHARE_ID;
-      const p = new URLSearchParams(location.search);
-      SHARE_ID = getIdFromPath() || p.get('id') || localStorage.getItem('share-id') || generateId();
-      try{ localStorage.setItem('share-id', SHARE_ID); }catch{}
-      return SHARE_ID;
-    }
+  }
 
-    // ====== Supabase 初始化由 /api/public-config 提供（不在 UI 顯示）=====
-    let supabaseClient = null, supaConfig = null;
-    async function loadSupaConfig(){
-      if (supaConfig) return supaConfig;
-      const resp = await fetch('/api/public-config');
-      const json = await resp.json();
-      if(!json?.supabaseUrl || !json?.supabaseAnon) throw new Error('缺少 Supabase 設定');
-      supaConfig = json; return supaConfig;
-    }
-    async function ensureSupabase(){
-      if (supabaseClient) return supabaseClient;
-      const { supabaseUrl, supabaseAnon } = await loadSupaConfig();
-      supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnon);
-      return supabaseClient;
-    }
+  // ========== 預覽上傳 ==========
+  if(photoA) photoA.addEventListener('change', e => preview(e.target.files[0], prevA, bubbleA, 'A'));
+  if(photoB) photoB.addEventListener('change', e => preview(e.target.files[0], prevB, bubbleB, 'B'));
+  function preview(file, previewNode, bubbleNode, which){
+    if(!file){ previewNode.innerHTML='🖼️'; bubbleNode.style.backgroundImage='none'; return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const url = e.target.result;
+      previewNode.innerHTML = `<img alt="預覽" src="${url}">`;
+      bubbleNode.style.backgroundImage = `url("${url}")`;
+      bubbleNode.style.backgroundSize = 'cover';
+      bubbleNode.style.backgroundPosition = 'center';
+      if(which==='A') originalA = url; else originalB = url;
+    };
+    reader.readAsDataURL(file);
+  }
 
-    // ====== 上傳預覽 ======
-    if(photoA) photoA.addEventListener('change', e => preview(e.target.files[0], prevA, bubbleA, 'A'));
-    if(photoB) photoB.addEventListener('change', e => preview(e.target.files[0], prevB, bubbleB, 'B'));
-    function preview(file, previewNode, bubbleNode, which){
-      if(!file){ previewNode.innerHTML='🖼️'; bubbleNode.style.backgroundImage='none'; return; }
-      const reader = new FileReader();
-      reader.onload = e => {
-        const url = e.target.result;
-        previewNode.innerHTML = `<img alt="預覽" src="${url}">`;
-        bubbleNode.style.backgroundImage = `url("${url}")`;
-        bubbleNode.style.backgroundSize = 'cover';
-        bubbleNode.style.backgroundPosition = 'center';
-        if(which==='A') originalA = url; else originalB = url;
-      };
-      reader.readAsDataURL(file);
-    }
+  // ========== 工具 ==========
+  function showToast(text){ toast.textContent=text; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),1800); }
+  function getCurrentBubble(bubble){
+    const bg = bubble.style.backgroundImage || getComputedStyle(bubble).backgroundImage;
+    const m = bg && bg.match(/url\(["']?(.*?)["']?\)/);
+    return m ? m[1] : null; // 可能是 dataURL 或 http(s)
+  }
+  function setBubbleFromURL(bubble,url){
+    bubble.style.backgroundImage = url ? `url(${url})` : 'none';
+    bubble.style.backgroundSize='cover'; bubble.style.backgroundPosition='center';
+  }
+  function dataURLtoBase64(dataUrl){ return dataUrl?.split(',')[1] || null; }
+  async function urlToBase64(url){
+    // 只有同源或允許 CORS 的圖片才行；否則回傳 null（分享仍會寫入姓名日期）
+    try{
+      const res = await fetch(url, { mode:'cors' });
+      if(!res.ok) return null;
+      const blob = await res.blob();
+      return await new Promise(r=>{
+        const fr = new FileReader(); fr.onload=()=>r(fr.result.split(',')[1]); fr.readAsDataURL(blob);
+      });
+    }catch{ return null; }
+  }
 
-    // ====== URL 參數帶入（a,b,d；v=1 => 固定模式）=====
-    (function hydrateFromQuery(){
-      const p = new URLSearchParams(location.search);
-      const a = p.get('a') || ''; const b = p.get('b') || ''; const d = p.get('d') || '';
-      const fixedMode = p.get('v') === '1';
-      if(a) nameA.value = a; if(b) nameB.value = b; if(d){ start.value = d; START_DATE = d; }
-      ensureShareId(); updateNames();
-      if(fixedMode){
-        document.body.classList.add('fixed-mode');
-        const form = document.querySelector('section.card[aria-labelledby="formTitle"]'); if(form) form.style.display='none';
-        const aName = nameA.value?.trim() || 'A'; const bName = nameB.value?.trim() || 'B';
-        document.title = `${aName} × ${bName}｜交往天數`;
-        const wm = document.querySelector('.watermark'); if(wm) wm.textContent = `Made for ${aName} & ${bName} with 💖`;
-        const headerActions = document.querySelector('header .actions'); if(headerActions) headerActions.style.display = 'none';
-      }
-    })();
-
-    // ====== LocalStorage ======
-    (function hydrateFromLocal(){
-      try{
-        const raw = localStorage.getItem('love-counter'); if(!raw) return;
-        const {a,b,d} = JSON.parse(raw);
-        if(a) nameA.value = a; if(b) nameB.value = b; if(d) start.value = d;
-        updateNames();
-      }catch{}
-    })();
-
-    function persist(){ try{ localStorage.setItem('love-counter', JSON.stringify({a:nameA.value,b:nameB.value,d:start.value})); }catch{} }
-    if(nameA) nameA.addEventListener('input', ()=>{updateNames();persist();});
-    if(nameB) nameB.addEventListener('input', ()=>{updateNames();persist();});
-    if(start) start.addEventListener('change', ()=>{ START_DATE = start.value; persist();});
-    function updateNames(){
-      const a = nameA.value?.trim() || 'A';
-      const b = nameB.value?.trim() || 'B';
-      namesEl.textContent = `${a} × ${b}`;
+  // ========== URL/分享載入 ==========
+  // 1) Query 覆寫
+  (function hydrateFromQuery(){
+    const p = new URLSearchParams(location.search);
+    const a = p.get('a') || ''; const b = p.get('b') || ''; const d = p.get('d') || '';
+    const fixedMode = p.get('v') === '1';
+    if(a) nameA.value = a; if(b) nameB.value = b; if(d){ start.value=d; START_DATE=d; }
+    ensureShareId(); updateNames();
+    if(fixedMode){
+      document.body.classList.add('fixed-mode');
+      const form = document.querySelector('section.card[aria-labelledby="formTitle"]'); if(form) form.style.display='none';
+      const aName = nameA.value?.trim() || 'A'; const bName = nameB.value?.trim() || 'B';
+      document.title = `${aName} × ${bName}｜交往天數`;
+      const wm = document.querySelector('.watermark'); if(wm) wm.textContent = `Made for ${aName} & ${bName} with 💖`;
+      const headerActions = document.querySelector('header .actions'); if(headerActions) headerActions.style.display='none';
     }
+  })();
 
-    // ====== 天數 & 愛心 ======
-    function computeAndAnimate(){
-      const d = daysSince(START_DATE);
-      countUp(daysEl, d, 1000);
-      subEl.textContent = `今天是交往第 ${d} 天`;
-      pulse(pair);
-      if(heartFX?.checked) startHeartsBurst();
-    }
-    if(goBtn) goBtn.addEventListener('click', computeAndAnimate);
-    const startBtn = document.getElementById('startBtn'); if(startBtn) startBtn.addEventListener('click', computeAndAnimate);
+  // 2) /c/<id> 分享頁自動載入 Supabase
+  (async function hydrateFromShare(){
+    const id = idFromPath(); if(!id) return;
+    try{
+      const supa = await ensureSupabase();
+      const { data, error } = await supa.from('couples').select('*').eq('slug', id).single();
+      if (error) throw error;
+      if (data?.name_a) nameA.value = data.name_a;
+      if (data?.name_b) nameB.value = data.name_b;
+      if (data?.start_date) { start.value = data.start_date; START_DATE = data.start_date; }
+      updateNames();
+      if (data?.photo_a_url) setBubbleFromURL(bubbleA, data.photo_a_url);
+      if (data?.photo_b_url) setBubbleFromURL(bubbleB, data.photo_b_url);
 
-    function countUp(el,target,duration){
-      const startVal = parseInt(el.textContent.replace(/\D/g,'')) || 0;
-      const diff = target - startVal; const startTs = performance.now();
-      function step(ts){ const t = Math.min(1,(ts-startTs)/duration); const ease = 1 - Math.pow(1-t,3);
-        el.textContent = Math.floor(startVal + diff*ease).toLocaleString();
-        if(t<1) requestAnimationFrame(step);
-      }
-      requestAnimationFrame(step);
+      document.body.classList.add('fixed-mode');
+      const headerActions = document.querySelector('header .actions'); if(headerActions) headerActions.style.display='none';
+      const form = document.querySelector('section.card[aria-labelledby="formTitle"]'); if(form) form.style.display='none';
+      document.title = `${nameA.value?.trim()||'A'} × ${nameB.value?.trim()||'B'}｜交往天數`;
+      const wm = document.querySelector('.watermark'); if(wm) wm.textContent = `Made for ${nameA.value||'A'} & ${nameB.value||'B'} with 💖`;
+    }catch(e){
+      console.error(e); showToast('分享資料載入失敗');
     }
-    function pulse(node){
-      node.animate([
-        {transform:'scale(1)',filter:'brightness(1)'},
-        {transform:'scale(1.05)',filter:'brightness(1.2)'},
-        {transform:'scale(1)',filter:'brightness(1)'},
-      ],{duration:500,easing:'ease-out'});
-    }
-    function startHeartsBurst(){
-      const colors=['#fb7185','#f472b6','#60a5fa','#22d3ee','#facc15'];
-      const stage=document.querySelector('.stage'); const N=22;
-      for(let i=0;i<N;i++){
-        const span=document.createElement('span'); span.className='heart'; span.textContent='❤';
-        span.style.left=(10+Math.random()*80)+'%'; span.style.bottom=(Math.random()*10)+'%';
-        span.style.color=colors[i%colors.length]; span.style.fontSize=(22+Math.random()*20)+'px';
-        span.style.animationDelay=(Math.random()*0.6)+'s';
-        stage.appendChild(span); setTimeout(()=>span.remove(),4200);
-      }
-    }
+  })();
 
-    // ====== AI ======
-    function styleToPrompt(style){
-      switch(style){
-        case 'q版': return 'Q版可愛、圓圓頭身、柔和光影、乾淨背景、圓形裁切、適合作為頭像';
-        case '漫畫': return '漫畫線稿＋上色、清晰描邊、圓形裁切、適合作為頭像';
-        case '水彩': return '水彩暈染、柔和筆觸、圓形裁切、適合作為頭像';
-        case '油畫': return '油畫厚塗、筆觸明顯、圓形裁切、適合作為頭像';
-        case '3d黏土': return '3D 黏土公仔、立體陰影、圓形裁切、適合作為頭像';
-        case '像素': return '8-bit 像素、對比明顯、圓形裁切、適合作為頭像';
-        case '賽博龐克': return '賽博龐克霓虹、藍紫偏光、金屬質感、圓形裁切';
-        case '日系扁平': return '日系扁平插畫、簡潔色塊、圓形裁切';
-        case '童話卡通': return '童話卡通、溫暖色系、柔焦背景、圓形裁切';
-        default: return '可愛插畫風格，保留臉部特徵，圓形裁切，柔和燈光，淺景深背景';
-      }
-    }
-    function dataURLtoBase64(dataUrl){ return dataUrl.split(',')[1] || null; }
-    function getCurrentBubble(bubble){
-      const bg = bubble.style.backgroundImage || getComputedStyle(bubble).backgroundImage;
-      const match = bg && bg.match(/url\(["']?(.*?)["']?\)/);
-      return match ? match[1] : null;
-    }
-    function setBubbleFromDataURL(bubble,dataUrl){
-      bubble.style.backgroundImage = dataUrl ? `url(${dataUrl})` : 'none';
-      bubble.style.backgroundSize='cover'; bubble.style.backgroundPosition='center';
-    }
+  // 3) LocalStorage
+  (function hydrateFromLocal(){
+    try{
+      const raw = localStorage.getItem('love-counter'); if(!raw) return;
+      const {a,b,d} = JSON.parse(raw);
+      if(a) nameA.value=a; if(b) nameB.value=b; if(d) start.value=d;
+      updateNames();
+    }catch{}
+  })();
+  function persist(){ try{ localStorage.setItem('love-counter', JSON.stringify({a:nameA.value,b:nameB.value,d:start.value})); }catch{} }
+  if(nameA) nameA.addEventListener('input', ()=>{updateNames();persist();});
+  if(nameB) nameB.addEventListener('input', ()=>{updateNames();persist();});
+  if(start)  start .addEventListener('change', ()=>{ START_DATE = start.value; persist();});
 
-    async function generateAI(which){
-      const bubble = which==='A'?bubbleA:bubbleB;
-      const useAI = which==='A' ? useAIA?.checked : useAIB?.checked;
-      const styleSel = which==='A' ? styleA : styleB;
-      const strength = which==='A' ? (parseInt(strengthA?.value||'70')||70) : (parseInt(strengthB?.value||'70')||70);
-      const btn = which==='A' ? genAIA : genAIB;
-      const revertBtn = which==='A' ? revertA : revertB;
+  function updateNames(){
+    const a = nameA.value?.trim() || 'A';
+    const b = nameB.value?.trim() || 'B';
+    namesEl.textContent = `${a} × ${b}`;
+  }
 
-      const curDataURL = getCurrentBubble(bubble);
-      const base64 = curDataURL ? dataURLtoBase64(curDataURL) : null;
-      if(!base64){ showToast('請先上傳照片'); return; }
-
-      btn.disabled = true; btn.textContent = '生成中…';
-      try{
-        const resp = await fetch('/api/ai-avatar',{method:'POST',headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ imageBase64: base64, prompt: styleToPrompt(styleSel?.value||''), strength })
-        });
-        const data = await resp.json();
-        if(!resp.ok || !data?.imageBase64) throw new Error(data?.error||'AI 生成失敗');
-        const dataUrl = 'data:image/png;base64,' + data.imageBase64;
-        if(which==='A'){ if(!originalA) originalA = curDataURL; aiA = dataUrl; } else { if(!originalB) originalB = curDataURL; aiB = dataUrl; }
-        if(useAI) setBubbleFromDataURL(bubble,dataUrl);
-        showToast('AI 頭像已完成'); revertBtn.disabled = false;
-      }catch(e){ console.error(e); showToast('生成失敗：'+e.message);
-      }finally{ btn.disabled=false; btn.textContent='換成AI頭像'; }
+  // ========== 天數 & 愛心 ==========
+  function computeAndAnimate(){
+    const d = daysSince(START_DATE);
+    countUp(daysEl, d, 1000);
+    subEl.textContent = `今天是交往第 ${d} 天`;
+    pulse(pair);
+    if(heartFX?.checked && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      startHeartsBurst();
     }
-    if(genAIA) genAIA.addEventListener('click', ()=>generateAI('A'));
-    if(genAIB) genAIB.addEventListener('click', ()=>generateAI('B'));
-    if(revertA) revertA.addEventListener('click', ()=>{ if(originalA){ setBubbleFromDataURL(bubbleA, originalA); useAIA.checked=false; } });
-    if(revertB) revertB.addEventListener('click', ()=>{ if(originalB){ setBubbleFromDataURL(bubbleB, originalB); useAIB.checked=false; } });
-    if(useAIA) useAIA.addEventListener('change', ()=>{ if(useAIA.checked && aiA) setBubbleFromDataURL(bubbleA, aiA); else if(originalA) setBubbleFromDataURL(bubbleA, originalA); });
-    if(useAIB) useAIB.addEventListener('change', ()=>{ if(useAIB.checked && aiB) setBubbleFromDataURL(bubbleB, aiB); else if(originalB) setBubbleFromDataURL(bubbleB, originalB); });
-    if(strengthA) strengthA.addEventListener('input', ()=>{ strengthATip.textContent = strengthA.value; });
-    if(strengthB) strengthB.addEventListener('input', ()=>{ strengthBTip.textContent = strengthB.value; });
+  }
+  if(goBtn) goBtn.addEventListener('click', computeAndAnimate);
+  const startBtn = document.getElementById('startBtn'); if(startBtn) startBtn.addEventListener('click', computeAndAnimate);
 
-    // ====== 上傳到 Supabase（前端 anon；建議改走 /api/upload-avatar）=====
-    async function dataUrlToBlob(dataUrl){ const res = await fetch(dataUrl); return await res.blob(); }
-    async function uploadAI(which){
-      try{
+  function countUp(el,target,duration){
+    const startVal = parseInt(el.textContent.replace(/\D/g,'')) || 0;
+    const diff = target - startVal; const startTs = performance.now();
+    function step(ts){ const t = Math.min(1,(ts-startTs)/duration); const ease = 1 - Math.pow(1-t,3);
+      el.textContent = Math.floor(startVal + diff*ease).toLocaleString();
+      if(t<1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  function pulse(node){
+    node.animate([
+      {transform:'scale(1)',filter:'brightness(1)'},
+      {transform:'scale(1.05)',filter:'brightness(1.2)'},
+      {transform:'scale(1)',filter:'brightness(1)'},
+    ],{duration:500,easing:'ease-out'});
+  }
+  function startHeartsBurst(){
+    const colors=['#fb7185','#f472b6','#60a5fa','#22d3ee','#facc15'];
+    const stage=document.querySelector('.stage'); const N=22;
+    for(let i=0;i<N;i++){
+      const span=document.createElement('span'); span.className='heart'; span.textContent='❤';
+      span.style.left=(10+Math.random()*80)+'%'; span.style.bottom=(Math.random()*10)+'%';
+      span.style.color=colors[i%colors.length]; span.style.fontSize=(22+Math.random()*20)+'px';
+      span.style.animationDelay=(Math.random()*0.6)+'s';
+      stage.appendChild(span); setTimeout(()=>span.remove(),4200);
+    }
+  }
+
+  // ========== AI 生成 ==========
+  function styleToPrompt(style){
+    switch(style){
+      case 'q版': return 'Q版可愛、圓圓頭身、柔和光影、乾淨背景、圓形裁切、適合作為頭像';
+      case '漫畫': return '漫畫線稿＋上色、清晰描邊、圓形裁切、適合作為頭像';
+      case '水彩': return '水彩暈染、柔和筆觸、圓形裁切、適合作為頭像';
+      case '油畫': return '油畫厚塗、筆觸明顯、圓形裁切、適合作為頭像';
+      case '3d黏土': return '3D 黏土公仔、立體陰影、圓形裁切、適合作為頭像';
+      case '像素': return '8-bit 像素、對比明顯、圓形裁切、適合作為頭像';
+      case '賽博龐克': return '賽博龐克霓虹、藍紫偏光、金屬質感、圓形裁切';
+      case '日系扁平': return '日系扁平插畫、簡潔色塊、圓形裁切';
+      case '童話卡通': return '童話卡通、溫暖色系、柔焦背景、圓形裁切';
+      default: return '可愛插畫風格，保留臉部特徵，圓形裁切，柔和燈光，淺景深背景';
+    }
+  }
+  async function generateAI(which){
+    const bubble = which==='A'?bubbleA:bubbleB;
+    const useAI  = which==='A'?useAIA?.checked:useAIB?.checked;
+    const styleSel = which==='A'?styleA:styleB;
+    const strength = which==='A'?(parseInt(strengthA?.value||'70')||70):(parseInt(strengthB?.value||'70')||70);
+    const btn = which==='A'?genAIA:genAIB;
+    const revertBtn = which==='A'?revertA:revertB;
+
+    const curURL = getCurrentBubble(bubble);
+    const base64 = curURL?.startsWith('data:image') ? dataURLtoBase64(curURL) : null;
+    if(!base64){ showToast('請先上傳照片'); return; }
+
+    btn.disabled = true; btn.textContent = '生成中…';
+    try{
+      const resp = await fetch('/api/ai-avatar',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ imageBase64: base64, prompt: styleToPrompt(styleSel?.value||''), strength })
+      });
+      const data = await resp.json();
+      if(!resp.ok || !data?.imageBase64) throw new Error(data?.error || 'AI 生成失敗');
+      const dataUrl = 'data:image/png;base64,' + data.imageBase64;
+      if(which==='A'){ if(!originalA) originalA = curURL; aiA = dataUrl; }
+      else { if(!originalB) originalB = curURL; aiB = dataUrl; }
+      if(useAI) setBubbleFromURL(bubble, dataUrl);
+      showToast('AI 頭像已完成'); revertBtn.disabled = false;
+    }catch(e){ console.error(e); showToast('生成失敗：'+(e.message||e));
+    }finally{ btn.disabled=false; btn.textContent='換成AI頭像'; }
+  }
+  if(genAIA) genAIA.addEventListener('click', ()=>generateAI('A'));
+  if(genAIB) genAIB.addEventListener('click', ()=>generateAI('B'));
+  if(revertA) revertA.addEventListener('click', ()=>{ if(originalA){ setBubbleFromURL(bubbleA, originalA); useAIA.checked=false; } });
+  if(revertB) revertB.addEventListener('click', ()=>{ if(originalB){ setBubbleFromURL(bubbleB, originalB); useAIB.checked=false; } });
+  if(useAIA) useAIA.addEventListener('change', ()=>{ if(useAIA.checked && aiA) setBubbleFromURL(bubbleA, aiA); else if(originalA) setBubbleFromURL(bubbleA, originalA); });
+  if(useAIB) useAIB.addEventListener('change', ()=>{ if(useAIB.checked && aiB) setBubbleFromURL(bubbleB, aiB); else if(originalB) setBubbleFromURL(bubbleB, originalB); });
+  if(strengthA) strengthA.addEventListener('input', ()=>{ strengthATip.textContent = strengthA.value; });
+  if(strengthB) strengthB.addEventListener('input', ()=>{ strengthBTip.textContent = strengthB.value; });
+
+  // ========== 上傳（Serverless 代理到 Supabase）==========
+  async function getBase64FromBubble(bubble){
+    const url = getCurrentBubble(bubble);
+    if(!url) return null;
+    if (url.startsWith('data:image')) return dataURLtoBase64(url);
+    // 非 dataURL 嘗試抓取轉 base64（可能被 CORS 擋，擋到時回 null）
+    return await urlToBase64(url);
+  }
+  async function uploadViaApi(which, base64, shareId, payload){
+    const filename = `${shareId}-${which}.png`;
+    const r = await fetch('/api/upload-avatar', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ imageBase64: base64, filename, payload })
+    });
+    const j = await r.json();
+    if(!r.ok) throw new Error(j?.error || 'server error');
+    return j?.publicUrl || null;
+  }
+
+  // ========== 分享連結（/c/:id）==========
+  shareBtn.addEventListener('click', async ()=>{
+    const id = ensureShareId();
+    const aName = (nameA?.value||'').trim() || 'A';
+    const bName = (nameB?.value||'').trim() || 'B';
+    const sDate = start?.value || null;
+    const payload = { slug:id, name_a:aName, name_b:bName, start_date:sDate, is_public:true };
+
+    try{
+      showToast('準備上傳…');
+      const [a64, b64] = await Promise.all([ getBase64FromBubble(bubbleA), getBase64FromBubble(bubbleB) ]);
+
+      const jobs = [];
+      if (a64) jobs.push(uploadViaApi('A', a64, id, payload));
+      if (b64) jobs.push(uploadViaApi('B', b64, id, payload));
+
+      if (!jobs.length) {
+        // 沒圖也至少寫入姓名/日期，讓分享頁載到資料
         const supa = await ensureSupabase();
-        const shareId = ensureShareId();
-        const aName = (nameA?.value||'').trim()||'A'; const bName=(nameB?.value||'').trim()||'B';
-        const sDate = start?.value||null;
-        const dataUrl = which==='A'? aiA : aiB; if(!dataUrl){ showToast('請先生成 AI 頭像'); return; }
+        await supa.from('couples').upsert(payload, { onConflict:'slug' });
+      } else {
+        await Promise.all(jobs);
+      }
 
-        showToast('上傳中…');
-        const blob = await dataUrlToBlob(dataUrl);
-        const filename = `${shareId}-${which}.png`;
-        const { error: upErr } = await supa.storage.from('avatars').upload(filename, blob, { upsert:true, contentType:'image/png' });
-        if(upErr) throw upErr;
-        const { data: pub } = supa.storage.from('avatars').getPublicUrl(filename);
-        const publicUrl = pub?.publicUrl;
-
-        const payload = { slug: shareId, name_a:aName, name_b:bName, start_date:sDate, is_public:true };
-        if(which==='A') payload.photo_a_url = publicUrl; else payload.photo_b_url = publicUrl;
-        const { error: dbErr } = await supa.from('couples').upsert(payload, { onConflict:'slug' });
-        if(dbErr) throw dbErr;
-        showToast('已上傳並更新資料庫！');
-      }catch(e){ console.error(e); showToast('失敗：'+(e.message||e)); }
+      const link = `${location.origin}/c/${id}?v=1`;
+      await navigator.clipboard?.writeText(link);
+      showToast('已複製分享連結（含頭像）');
+    }catch(e){
+      console.error(e); showToast('分享失敗：'+(e.message||e));
     }
-    const uploadA = document.getElementById('uploadA');
-    const uploadB = document.getElementById('uploadB');
-    if(uploadA) uploadA.addEventListener('click', ()=>uploadAI('A'));
-    if(uploadB) uploadB.addEventListener('click', ()=>uploadAI('B'));
+  });
 
-    // ====== 分享連結（/c/:id）=====
-    shareBtn.addEventListener('click', ()=>{
-      const id = ensureShareId();
-      const base = `${location.origin}/c/${id}`;
-      const p = new URLSearchParams();
-      if(nameA && nameA.value) p.set('a', nameA.value.trim());
-      if(nameB && nameB.value) p.set('b', nameB.value.trim());
-      if(start && start.value) p.set('d', start.value);
-      p.set('v','1');
-      const link = `${base}?${p.toString()}`;
-      navigator.clipboard?.writeText(link).then(()=>showToast('已複製分享連結（固定頁面）')).catch(()=>{ prompt('複製這個連結：', link); });
-    });
+  // ========== 重設 / AI 面板 ==========
+  resetBtn.addEventListener('click', ()=>{
+    nameA.value=''; nameB.value=''; start.value='';
+    prevA.innerHTML='🖼️'; prevB.innerHTML='🖼️';
+    bubbleA.style.backgroundImage='none'; bubbleB.style.backgroundImage='none';
+    daysEl.textContent='0'; namesEl.textContent='許皓鈞 × Sunny'; subEl.textContent='按下「開始」看看今天第幾天 ✨';
+    localStorage.removeItem('love-counter'); originalA = originalB = aiA = aiB = null;
+  });
+  aiToggleBtn.addEventListener('click', ()=>{
+    document.body.classList.toggle('ai-open');
+    aiToggleBtn.textContent = document.body.classList.contains('ai-open') ? '隱藏 AI 工具' : 'AI 工具';
+  });
+</script>
 
-    // ====== 重設 & Toast & AI 面板 ======
-    resetBtn.addEventListener('click', ()=>{
-      nameA.value=''; nameB.value=''; start.value='';
-      prevA.innerHTML='🖼️'; prevB.innerHTML='🖼️';
-      bubbleA.style.backgroundImage='none'; bubbleB.style.backgroundImage='none';
-      daysEl.textContent='0'; namesEl.textContent='許皓鈞 × Sunny'; subEl.textContent='按下「開始」看看今天第幾天 ✨';
-      localStorage.removeItem('love-counter'); originalA = originalB = aiA = aiB = null;
-    });
-    function showToast(text){ toast.textContent = text; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),1800); }
-    aiToggleBtn.addEventListener('click', ()=>{ document.body.classList.toggle('ai-open'); aiToggleBtn.textContent = document.body.classList.contains('ai-open') ? '隱藏 AI 工具' : 'AI 工具'; });
-  </script>
 </body>
 </html>
