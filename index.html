@@ -378,17 +378,34 @@
     const b = nameB.value?.trim() || 'B';
     namesEl.textContent = `${a} × ${b}`;
   }
+// 任何需要拿 JSON 的 fetch 都用它，不要直接 resp.json()
+async function requestJSON(url, options) {
+  const resp = await fetch(url, options);
+  const raw = await resp.text(); // 先拿純文字，避免 "Unexpected end of JSON input"
+  let data = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch (_) { /* 不是 JSON 也別爆 */ }
+  if (!resp.ok) {
+    // 把後端吐回來的錯誤字串/物件盡量呈現出來
+    const msg = (data && (data.error || data.message)) || raw || resp.statusText;
+    throw new Error(msg);
+  }
+  return data;
+}
 
   // ========== 天數 & 愛心 ==========
-  function computeAndAnimate(){
-    const d = daysSince(START_DATE);
-    countUp(daysEl, d, 1000);
-    subEl.textContent = `今天是交往第 ${d} 天`;
-    pulse(pair);
-    if(heartFX?.checked && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
-      startHeartsBurst();
-    }
-  }
+function computeAndAnimate(){
+  const d = daysSince(START_DATE);
+  countUp(daysEl, d, 1000);
+  subEl.textContent = `今天是交往第 ${d} 天`;
+  pulse(pair);
+
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // 分享頁沒有 #heartFX 時，預設為 true（會噴愛心）
+  const heartsEnabled = heartFX ? !!heartFX.checked : true;
+
+  if (heartsEnabled && !prefersReduced) startHeartsBurst();
+}
+
   if(goBtn) goBtn.addEventListener('click', computeAndAnimate);
   const startBtn = document.getElementById('startBtn'); if(startBtn) startBtn.addEventListener('click', computeAndAnimate);
 
@@ -448,21 +465,31 @@
     if(!base64){ showToast('請先上傳照片'); return; }
 
     btn.disabled = true; btn.textContent = '生成中…';
-    try{
-      const resp = await fetch('/api/ai-avatar',{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ imageBase64: base64, prompt: styleToPrompt(styleSel?.value||''), strength })
-      });
-      const data = await resp.json();
-      if(!resp.ok || !data?.imageBase64) throw new Error(data?.error || 'AI 生成失敗');
-      const dataUrl = 'data:image/png;base64,' + data.imageBase64;
-      if(which==='A'){ if(!originalA) originalA = curURL; aiA = dataUrl; }
-      else { if(!originalB) originalB = curURL; aiB = dataUrl; }
-      if(useAI) setBubbleFromURL(bubble, dataUrl);
-      showToast('AI 頭像已完成'); revertBtn.disabled = false;
-    }catch(e){ console.error(e); showToast('生成失敗：'+(e.message||e));
-    }finally{ btn.disabled=false; btn.textContent='換成AI頭像'; }
-  }
+btn.disabled = true; btn.textContent = '生成中…';
+try {
+  const data = await requestJSON('/api/ai-avatar', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      imageBase64: base64,
+      prompt: styleToPrompt(styleSel?.value || ''),
+      strength
+    })
+  });
+  if (!data?.imageBase64) throw new Error('AI 沒有回傳圖片內容');
+  const dataUrl = 'data:image/png;base64,' + data.imageBase64;
+  if (which === 'A') { if(!originalA) originalA = curURL; aiA = dataUrl; }
+  else { if(!originalB) originalB = curURL; aiB = dataUrl; }
+  if (useAI) setBubbleFromURL(bubble, dataUrl);
+  showToast('AI 頭像已完成'); 
+  revertBtn.disabled = false;
+} catch (e) {
+  console.error(e);
+  showToast('生成失敗：' + (e.message || e));
+} finally {
+  btn.disabled = false; btn.textContent = '換成AI頭像';
+}}
+
   if(genAIA) genAIA.addEventListener('click', ()=>generateAI('A'));
   if(genAIB) genAIB.addEventListener('click', ()=>generateAI('B'));
   if(revertA) revertA.addEventListener('click', ()=>{ if(originalA){ setBubbleFromURL(bubbleA, originalA); useAIA.checked=false; } });
@@ -528,13 +555,13 @@ shareBtn.addEventListener('click', async () => {
 
 
   // ========== 重設 / AI 面板 ==========
-  resetBtn.addEventListener('click', ()=>{
+resetBtn.addEventListener('click', ()=>{
     nameA.value=''; nameB.value=''; start.value='';
     prevA.innerHTML='🖼️'; prevB.innerHTML='🖼️';
     bubbleA.style.backgroundImage='none'; bubbleB.style.backgroundImage='none';
     daysEl.textContent='0'; namesEl.textContent='許皓鈞 × Sunny'; subEl.textContent='按下「開始」看看今天第幾天 ✨';
     localStorage.removeItem('love-counter'); originalA = originalB = aiA = aiB = null;
-  });
+});
   aiToggleBtn.addEventListener('click', ()=>{
     document.body.classList.toggle('ai-open');
     aiToggleBtn.textContent = document.body.classList.contains('ai-open') ? '隱藏 AI 工具' : 'AI 工具';
