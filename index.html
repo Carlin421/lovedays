@@ -244,7 +244,20 @@
     let originalA = null, originalB = null;
     let aiA = null, aiB = null;
     let SHARE_ID = null;
+  async function getPublicConfig(){
+    // 建議：從你的後端 `/api/public-config` 取公開設定（避免把值硬寫在 HTML）
+    const r = await fetch('/api/public-config');
+    const { supabaseUrl, supabaseAnon } = await r.json();
+    return { supabaseUrl, supabaseAnon };
+  }
 
+async function ensureSupabase(){
+    let supabaseClient = null; // Declare supabaseClient inside the function
+    if (supabaseClient) return supabaseClient;
+    const { supabaseUrl, supabaseAnon } = await getPublicConfig();
+    supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnon);
+    return supabaseClient;
+}
     // ====== 產生/取得 shareId（/c/:id）=====
     function generateId(len=12){
       const chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
