@@ -161,9 +161,6 @@
         <div class="actions">
           <button id="goBtn" aria-label="開始">開始 ✨</button>
         </div>
-        <div class="actions" style="gap:8px;margin-top:8px">
-          <label><input id="heartFX" type="checkbox" checked>顯示愛心特效</label>
-        </div>
         <p style="margin:10px 2px 0;font-size:12px;color:var(--muted)">＊天數以台灣時區（Asia/Taipei）的「當地午夜」計算，第 1 天為 Day 1。</p>
       </section>
 
@@ -223,7 +220,7 @@
   const aiToggleBtn = document.getElementById('aiToggleBtn');
   const resetBtn = document.getElementById('resetBtn');
   const toast = document.getElementById('toast');
-  const heartFX = document.getElementById('heartFX');
+  //const heartFX = document.getElementById('heartFX');
 
   // AI 控制
   const useAIA = document.getElementById('useAIA');
@@ -393,17 +390,20 @@ async function requestJSON(url, options) {
 }
 
   // ========== 天數 & 愛心 ==========
+let __lastHeartBurst = 0;
+
 function computeAndAnimate(){
   const d = daysSince(START_DATE);
   countUp(daysEl, d, 1000);
   subEl.textContent = `今天是交往第 ${d} 天`;
   pulse(pair);
 
-  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // 分享頁沒有 #heartFX 時，預設為 true（會噴愛心）
-  const heartsEnabled = heartFX ? !!heartFX.checked : true;
-
-  if (heartsEnabled && !prefersReduced) startHeartsBurst();
+  // 不管怎麼樣都噴愛心（不再檢查 checkbox、也不理會 prefers-reduced-motion）
+  const now = performance.now();
+  if (now - __lastHeartBurst > 500) { // 0.5 秒節流一下，體感更順
+    startHeartsBurst();
+    __lastHeartBurst = now;
+  }
 }
 
   if(goBtn) goBtn.addEventListener('click', computeAndAnimate);
@@ -425,17 +425,23 @@ function computeAndAnimate(){
       {transform:'scale(1)',filter:'brightness(1)'},
     ],{duration:500,easing:'ease-out'});
   }
-  function startHeartsBurst(){
-    const colors=['#fb7185','#f472b6','#60a5fa','#22d3ee','#facc15'];
-    const stage=document.querySelector('.stage'); const N=22;
-    for(let i=0;i<N;i++){
-      const span=document.createElement('span'); span.className='heart'; span.textContent='❤';
-      span.style.left=(10+Math.random()*80)+'%'; span.style.bottom=(Math.random()*10)+'%';
-      span.style.color=colors[i%colors.length]; span.style.fontSize=(22+Math.random()*20)+'px';
-      span.style.animationDelay=(Math.random()*0.6)+'s';
-      stage.appendChild(span); setTimeout(()=>span.remove(),4200);
-    }
+function startHeartsBurst(){
+  const colors = ['#fb7185','#f472b6','#60a5fa','#22d3ee','#facc15'];
+  const stage = document.querySelector('.stage');
+  const N = 22; // 原本數量
+  for(let i=0;i<N;i++){
+    const span = document.createElement('span');
+    span.className = 'heart';
+    span.textContent = '❤';
+    span.style.left = (10 + Math.random()*80) + '%';
+    span.style.bottom = (Math.random()*10) + '%';
+    span.style.color = colors[i % colors.length];
+    span.style.fontSize = (22 + Math.random()*20) + 'px';
+    span.style.animationDelay = (Math.random()*0.6) + 's';
+    stage.appendChild(span);
+    setTimeout(() => span.remove(), 4200); // 與動畫時長一致
   }
+}
 
   // ========== AI 生成 ==========
   function styleToPrompt(style){
