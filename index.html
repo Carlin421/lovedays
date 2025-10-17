@@ -491,37 +491,41 @@
     return j?.publicUrl || null;
   }
 
-  // ========== 分享連結（/c/:id）==========
-  shareBtn.addEventListener('click', async ()=>{
-    const id = ensureShareId();
-    const aName = (nameA?.value||'').trim() || 'A';
-    const bName = (nameB?.value||'').trim() || 'B';
-    const sDate = start?.value || null;
-    const payload = { slug:id, name_a:aName, name_b:bName, start_date:sDate, is_public:true };
+shareBtn.addEventListener('click', async () => {
+  const id = ensureShareId();
+  const aName = (nameA?.value || '').trim() || 'A';
+  const bName = (nameB?.value || '').trim() || 'B';
+  const sDate = start?.value || null;
+  const payload = { slug: id, name_a: aName, name_b: bName, start_date: sDate, is_public: true };
 
-    try{
-      showToast('準備上傳…');
-      const [a64, b64] = await Promise.all([ getBase64FromBubble(bubbleA), getBase64FromBubble(bubbleB) ]);
+  try {
+    showToast('上傳頭像中…');
 
-      const jobs = [];
-      if (a64) jobs.push(uploadViaApi('A', a64, id, payload));
-      if (b64) jobs.push(uploadViaApi('B', b64, id, payload));
+    const [a64, b64] = await Promise.all([
+      getBase64FromBubble(bubbleA),
+      getBase64FromBubble(bubbleB),
+    ]);
 
-      if (!jobs.length) {
-        // 沒圖也至少寫入姓名/日期，讓分享頁載到資料
-        const supa = await ensureSupabase();
-        await supa.from('couples').upsert(payload, { onConflict:'slug' });
-      } else {
-        await Promise.all(jobs);
-      }
+    const jobs = [];
+    if (a64) jobs.push(uploadViaApi('A', a64, id, payload));
+    if (b64) jobs.push(uploadViaApi('B', b64, id, payload));
 
-      const link = `${location.origin}/c/${id}?v=1`;
-      await navigator.clipboard?.writeText(link);
-      showToast('已複製分享連結（含頭像）');
-    }catch(e){
-      console.error(e); showToast('分享失敗：'+(e.message||e));
+    if (!jobs.length) {
+      const supa = await ensureSupabase();
+      await supa.from('couples').upsert(payload, { onConflict: 'slug' });
+    } else {
+      await Promise.all(jobs);
     }
-  });
+
+    const link = `${location.origin}/c/${id}?v=1`;
+    await navigator.clipboard?.writeText(link);
+    showToast('已複製分享連結（含頭像）');
+  } catch (e) {
+    console.error(e);
+    showToast('分享失敗：' + (e.message || e));
+  }
+});
+
 
   // ========== 重設 / AI 面板 ==========
   resetBtn.addEventListener('click', ()=>{
