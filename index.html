@@ -504,17 +504,31 @@ async function getBase64FromBubble(bubble){
   if(url.startsWith('data:image')) return dataURLtoBase64(url);
   return await urlToBase64(url);
 }
-async function uploadViaApi(which, base64, shareId, payload){
-  const filename = `${shareId}-${which}.png`;
-  const resp = await fetch('/api/upload-avatar', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ imageBase64: base64, filename, payload })
+// === 新增：把 base64 圖片算 SHA-256，做內容去重 ===
+async function sha256OfBase64(base64) {
+  // base64 -> bytes
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  // digest
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  // bytes -> hex
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function uploadViaApi(which, base64, shareId, payload) {
+  const filename = `${shareId}-${which}.png`; // 只是用來判斷 A/B 欄位
+  const hash = await sha256OfBase64(base64);
+
+  const j = await requestJSON('/api/upload-avatar', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ imageBase64: base64, filename, payload, hash })
   });
-  const raw = await resp.text();
-  let j={}; try{ j = raw ? JSON.parse(raw) : {}; }catch{ j = { error: raw }; }
-  // 後端若回 409 代表檔案已存在 → 視為成功沿用舊檔
-  if(!resp.ok && resp.status !== 409) throw new Error(j?.error || `HTTP ${resp.status}`);
+
+  // j.reused 為 true 代表後端直接沿用舊圖；false 代表剛上傳的新圖
   return j?.publicUrl || null;
 }
 
