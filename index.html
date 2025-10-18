@@ -74,7 +74,7 @@
     .fixed-mode #startBtn{font-size:clamp(18px,2.2vw,24px);padding:16px 36px;border-radius:9999px}
     .fixed-mode .watermark{right:auto;left:50%;transform:translateX(-50%);bottom:16px}
 
-    /* AI 工具區（只在按下 AI 工具時顯示） */
+    /* AI 工具區（按下 AI 工具時顯示） */
     .ai-tools{display:none}
     body.ai-open .ai-tools{display:block}
   </style>
@@ -258,27 +258,11 @@ let START_DATE = start?.value || '';
 let originalA = null, originalB = null;
 let aiA = null, aiB = null;
 
-/* ==================== 唯一 id（同一組人重用） ==================== */
+/* ==================== 唯一 id（每次分享都新 id） ==================== */
 function generateId(len=12){
   const chars='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const arr = new Uint32Array(len); crypto.getRandomValues(arr);
   return Array.from(arr,x=>chars[x%chars.length]).join('');
-}
-function pairKey(){
-  const a = (nameA?.value || '').trim();
-  const b = (nameB?.value || '').trim();
-  const d = (start?.value || '').trim();
-  return `${a}|${b}|${d}`;
-}
-function getOrCreatePairId(){
-  const key = pairKey();
-  let map = {};
-  try{ map = JSON.parse(localStorage.getItem('share-id-map') || '{}'); }catch{}
-  if(map[key]) return map[key];
-  const id = generateId();
-  map[key] = id;
-  localStorage.setItem('share-id-map', JSON.stringify(map));
-  return id;
 }
 function idFromPath(){
   const m = location.pathname.match(/^\/c\/([A-Za-z0-9_-]{6,})/);
@@ -478,7 +462,6 @@ async function generateAI(which){
 
   btn.disabled = true; btn.textContent = '生成中…';
   try{
-    // 目前泡泡是 dataURL，直接拆 base64；不是的話再嘗試抓取轉 base64
     const base64 = curURL.startsWith('data:image') ? dataURLtoBase64(curURL) : (await urlToBase64(curURL));
     if(!base64) throw new Error('讀取圖片失敗');
 
@@ -511,10 +494,10 @@ if(revertA) revertA.addEventListener('click', ()=>{ if(originalA){ setBubbleFrom
 if(revertB) revertB.addEventListener('click', ()=>{ if(originalB){ setBubbleFromURL(bubbleB, originalB); if(useAIB) useAIB.checked=false; } });
 if(useAIA) useAIA.addEventListener('change', ()=>{ if(useAIA.checked && aiA) setBubbleFromURL(bubbleA, aiA); else if(originalA) setBubbleFromURL(bubbleA, originalA); });
 if(useAIB) useAIB.addEventListener('change', ()=>{ if(useAIB.checked && aiB) setBubbleFromURL(bubbleB, aiB); else if(originalB) setBubbleFromURL(bubbleB, originalB); });
-if(strengthA) strengthA.addEventListener('input', ()=>{ strengthATip.textContent = strengthA.value; });
-if(strengthB) strengthB.addEventListener('input', ()=>{ strengthBTip.textContent = strengthB.value; });
+if(strengthA) strengthA.addEventListener('input', ()=>{ if(strengthATip) strengthATip.textContent = strengthA.value; });
+if(strengthB) strengthB.addEventListener('input', ()=>{ if(strengthBTip) strengthBTip.textContent = strengthB.value; });
 
-/* ==================== 上傳（Serverless 代理到 Supabase；禁止覆蓋） ==================== */
+/* ==================== 上傳（Serverless 代理到 Supabase；處理 409） ==================== */
 async function getBase64FromBubble(bubble){
   const url = getCurrentBubble(bubble);
   if(!url) return null;
@@ -535,9 +518,9 @@ async function uploadViaApi(which, base64, shareId, payload){
   return j?.publicUrl || null;
 }
 
-/* ==================== 分享連結（唯一） ==================== */
+/* ==================== 分享連結（每次都產生新 URL） ==================== */
 shareBtn.addEventListener('click', async ()=>{
-  const id = getOrCreatePairId();   // 同一組（A/B/日期）重用同一 id
+  const id = generateId(); // 每次分享都新 ID
   const aName = (nameA?.value||'').trim() || 'A';
   const bName = (nameB?.value||'').trim() || 'B';
   const sDate = start?.value || null;
@@ -555,7 +538,7 @@ shareBtn.addEventListener('click', async ()=>{
       // 沒圖也至少寫入名字/日期（若資料已存在，忽略錯誤）
       try{
         const supa = await ensureSupabase();
-        await supa.from('couples').insert(payload);
+        await supa.from('couples').upsert(payload, { onConflict:'slug' });
       }catch{}
     } else {
       await Promise.all(jobs);
@@ -582,8 +565,6 @@ if(aiToggleBtn) aiToggleBtn.addEventListener('click', ()=>{
   document.body.classList.toggle('ai-open');
   aiToggleBtn.textContent = document.body.classList.contains('ai-open') ? '隱藏 AI 工具' : 'AI 工具';
 });
-</script>
-
-
+  </script>
 </body>
 </html>
